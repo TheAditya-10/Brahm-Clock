@@ -113,7 +113,7 @@ class Repo(context: Context) {
 
     fun newAlarmId(): Int = (alarms.maxOfOrNull { it.id } ?: 0) + 1
 
-    fun setZones(value: List<String>) {
+    fun updateZones(value: List<String>) {
         zones = value
         prefs.edit { putString("zones", value.joinToString(",")) }
     }

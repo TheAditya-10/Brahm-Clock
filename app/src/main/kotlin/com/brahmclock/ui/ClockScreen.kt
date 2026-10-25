@@ -84,7 +84,7 @@ fun ClockScreen() {
                         )
                     }
                     Text(Format.time(there.toLocalTime(), use24h), fontSize = 26.sp, fontWeight = FontWeight.Light)
-                    TextButton(onClick = { repo.setZones(repo.zones - id) }) { Text("✕") }
+                    TextButton(onClick = { repo.updateZones(repo.zones - id) }) { Text("✕") }
                 }
                 HorizontalDivider()
             }
@@ -108,7 +108,7 @@ fun ClockScreen() {
                             Text(
                                 "${cityName(id)}  ·  ${id.substringBefore('/')}",
                                 modifier = Modifier.fillMaxWidth().clickable {
-                                    if (id !in repo.zones) repo.setZones(repo.zones + id)
+                                    if (id !in repo.zones) repo.updateZones(repo.zones + id)
                                     adding = false
                                 }.padding(vertical = 10.dp),
                             )
