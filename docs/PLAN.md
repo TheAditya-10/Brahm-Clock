@@ -18,9 +18,8 @@ minutes** each. Brahma Muhurta is the **second‑to‑last muhurta of the night*
    start = sunrise − 96 min                end = sunrise − 48 min
 ```
 
-> Note: you mentioned "starting ~90 minutes before sunrise". The traditional
-> definition is **96 min** (2 muhurtas × 48 min). We'll use 96 as the default
-> and let the user change the offset in Settings (e.g. 90 min) if they prefer.
+> Decision: the traditional **96 min** (2 muhurtas × 48 min) is the default;
+> the offset is adjustable in the Brahma alarm settings (72–120 min).
 
 Because sunrise shifts every day (and differs by city), the alarm time must be
 **recomputed daily** from latitude/longitude and date.
@@ -72,16 +71,22 @@ Rules:
 - **Snooze** skips to the next stage.
 - Modes: *Gentle* (above), *Standard* (single alarm at window start), *Custom*
   (choose stage count, intervals, sounds).
-- Sound pack (bundled, small OGG files, ~1–2 MB total): temple bell, tanpura
-  drone, birdsong, conch (shankh), Om chant, flowing water.
+- Sound: the phone's default alarm, any system ringtone, or **any audio file
+  from the user's own library** (Storage Access Framework, persisted
+  permission). No bundled sounds in v1, which keeps the APK small.
 - Repeat days (e.g. Mon–Sat) and "skip next" just like a normal alarm.
+
+### Sleep reminder
+A notification at **bedtime = window start − sleep goal** (default 8 h),
+optionally 15/30/60 min early. E.g. window 04:58 → reminder 20:58. It follows
+the same repeat days and skip as the alarm.
 
 ### Rescheduling logic
 Schedule only the **next** occurrence; recompute after it fires and on these
 triggers:
 - Alarm finished/dismissed → compute tomorrow's window
 - `BOOT_COMPLETED`, `TIME_SET`, `TIMEZONE_CHANGED` broadcasts
-- Significant location change (checked on app open + once a day via WorkManager)
+- Significant location change (> 5 km, checked whenever the app opens)
 - Settings changed
 
 Edge cases: polar regions where the sun doesn't rise/set → fall back to the
@@ -97,9 +102,9 @@ user's fixed backup time and show a notice; DST transitions handled by using
 | Language | **Kotlin** | Standard for Android |
 | UI | **Jetpack Compose + Material 3** | Modern, less code; with R8 the release APK stays ~4–6 MB |
 | Min / target SDK | minSdk 26 (Android 8), targetSdk 35 | Covers ~95% devices, `java.time` available natively |
-| Storage | **Room** (alarms, world clocks) + **DataStore** (settings, cached location) | Small, official |
+| Storage | **SharedPreferences** + `org.json` | A few dozen rows; no database or annotation processing needed |
 | Scheduling | `AlarmManager.setAlarmClock()` | Exact, survives Doze, shows alarm icon in status bar |
-| Background refresh | **WorkManager** (1 daily job) | Recompute window / location |
+| Background refresh | None: recomputed after every ring, on boot/time change, on app open | One fewer library |
 | Ringing | Foreground service + `MediaPlayer` + full‑screen intent notification | Reliable lock‑screen alarm |
 | Location | Platform `LocationManager` | No Play Services dependency |
 | Sun math | Own NOAA implementation (pure Kotlin, unit tested) | No network, no library |
@@ -120,6 +125,8 @@ Bottom navigation with 5 tabs. **Brahma** is the home tab.
 ```
 [ 🌅 Brahma ] [ ⏰ Alarm ] [ 🕐 Clock ] [ ⏳ Timer ] [ ⏱ Stopwatch ]
 ```
+
+Language: English only.
 
 Visual style: dark‑first theme (it's used at 4 AM), deep indigo night sky →
 saffron/amber dawn gradient, large clean numerals, AMOLED black option.
@@ -246,31 +253,22 @@ snooze, volume button behaviour, week start day, location source,
 ## 6. Project structure
 
 ```
-app/src/main/java/com/brahmclock/
-├── BrahmApp.kt                 // Application + AppContainer
-├── MainActivity.kt             // Compose host + bottom nav
-├── core/
-│   ├── sun/SunCalculator.kt    // NOAA sunrise/sunset (pure Kotlin)
-│   ├── sun/BrahmaWindow.kt     // window = sunrise − offset … − 48
-│   ├── location/LocationRepo.kt
-│   └── time/Clock.kt
-├── data/
-│   ├── db/ (Room: AlarmEntity, WorldClockEntity, DAOs)
-│   └── prefs/SettingsStore.kt  // DataStore
-├── alarm/
-│   ├── AlarmScheduler.kt       // AlarmManager wrapper
-│   ├── StagePlanner.kt         // builds the 7-stage timeline
-│   ├── AlarmReceiver.kt
-│   ├── RingService.kt          // foreground service, fade-in playback
-│   ├── RingActivity.kt         // full-screen ringing UI
-│   └── BootReceiver.kt         // reschedule on boot/time change
-├── work/DailyRefreshWorker.kt
-└── ui/
-    ├── theme/
-    ├── brahma/  alarm/  clock/  timer/  stopwatch/  settings/  onboarding/
+core/                         pure Kotlin, unit tested on the JVM
+  SunCalculator.kt            NOAA sunrise
+  Brahma.kt                   window, stages, next plan, sleep reminder, streak
+  AlarmMath.kt                next occurrence of a normal alarm
+  Cities.kt                   offline city list
+app/src/main/kotlin/com/brahmclock/
+  BrahmApp.kt                 Application, notification channels
+  data/Repo.kt                SharedPreferences-backed state
+  alarm/Scheduler.kt          AlarmManager (setAlarmClock)
+  alarm/AlarmReceiver.kt      ring / sleep-reminder broadcasts
+  alarm/RingService.kt        foreground playback with fade-in
+  alarm/RingActivity.kt       full-screen lock-screen UI
+  alarm/BootReceiver.kt       reschedule on boot/time change
+  location/LocationHelper.kt  platform LocationManager
+  ui/                         Brahma, Alarms, Clock, Timer, Stopwatch, Settings
 ```
-
----
 
 ## 7. Build roadmap
 
@@ -290,10 +288,11 @@ DST/timezone changes (instrumented), real‑device overnight test.
 
 ---
 
-## 8. Open questions for you
+## 8. Decisions
 
-1. Default offset: traditional **96 min**, or your **90 min**?
-2. Min Android version OK at **8.0 (API 26)**?
-3. Language: English only, or English + Hindi from day one?
-4. Any specific sounds you want (e.g. your own recorded chant)?
-5. App name / package: `Brahm Clock` / `com.brahmclock` OK?
+- Offset: 96 min (traditional), adjustable.
+- Min Android: 8.0 (API 26).
+- Language: English only.
+- Sounds: none bundled; user can pick from their own library.
+- Extra: sleep reminder 8 h before the window.
+- Name / package: Brahm Clock / `com.brahmclock`.
